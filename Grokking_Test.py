@@ -158,16 +158,25 @@ def make_dataset(p):
 def train_test_split(non_mod_dataset, mod_dataset, train_split_proportion, non_mod_proportion, seed):
     l_non_mod           = len(non_mod_dataset)
     l_mod               = len(mod_dataset)
-    train_len_non_mod   = int(train_split_proportion * l_non_mod)
-    train_len_mod       = int(train_split_proportion * l_mod)
+    train_len_non_mod   = int(non_mod_proportion * train_split_proportion * l_non_mod)
+    train_len_mod       = int((1 - non_mod_proportion) * train_split_proportion * l_mod)
 
-    idx = list(range(l))
-    idx = deterministic_shuffle(idx, seed)
+    idx_non_mod = list(range(l_non_mod))
+    idx_non_mod = deterministic_shuffle(idx_non_mod, seed)
 
-    train_idx = idx[:train_len]
-    test_idx = idx[train_len:]
-    #returns two lists of tuples where the structure is basically ([a, b], (a + b) % p)
-    return [dataset[i] for i in train_idx], [dataset[i] for i in test_idx]
+    idx_mod = list(range(l_mod))
+    idx_mod = deterministic_shuffle(idx_mod, seed)
+
+    train_idx_non_mod = idx_non_mod[:train_len_non_mod]
+    test_idx_non_mod = idx_non_mod[train_len_non_mod:]
+    
+    train_idx_mod = idx_mod[:train_len_mod]
+    test_idx_mod = idx_mod[train_len_mod:]
+
+    train_dataset = [non_mod_dataset[i] for i in train_idx_non_mod] + [mod_dataset[i] for i in train_idx_mod]
+    test_dataset = [non_mod_dataset[i] for i in test_idx_non_mod] + [mod_dataset[i] for i in test_idx_mod]
+
+    return train_dataset, test_dataset
 
 #create function which tells me more about how train- and testset are split
 def num_modolo(dataset, prime):

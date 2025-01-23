@@ -1,1 +1,1 @@
-# Playing around with SLT and modular Addition
+# Playing around with SLT and modular addition
