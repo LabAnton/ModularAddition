@@ -24,15 +24,15 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 class ExperimentParams:
     p: int = 53
-    n_batches: int = 10000
-    n_save_model_checkpoints: int = 100
-    print_times: int = 100
+    n_batches: int = 50000
+    n_save_model_checkpoints: int = 0 
+    print_times: int = 200
     lr: float = 0.005
     batch_size: int = 128
     hidden_size: int = 48
     embed_dim: int = 12
-    train_frac: float = 0.3
-    mod_frac: float = 0.5
+    train_frac: float = 0.4
+    non_mod_frac: float = 0.2
     random_seed: int = 0 
     device: str = DEVICE
     weight_decay: float = 0.0002
@@ -156,60 +156,70 @@ def make_dataset(p):
 
 #split data and introduce mod-nonmod split
 def train_test_split(non_mod_dataset, mod_dataset, train_split_proportion, non_mod_proportion, seed):
+    #first I get length of both datasets, then I calculate the split ratio for each
     l_non_mod           = len(non_mod_dataset)
     l_mod               = len(mod_dataset)
-    train_len_non_mod   = int(non_mod_proportion * train_split_proportion * l_non_mod)
-    train_len_mod       = int((1 - non_mod_proportion) * train_split_proportion * l_mod)
-
-    idx_non_mod = list(range(l_non_mod))
-    idx_non_mod = deterministic_shuffle(idx_non_mod, seed)
-
-    idx_mod = list(range(l_mod))
-    idx_mod = deterministic_shuffle(idx_mod, seed)
-
-    train_idx_non_mod = idx_non_mod[:train_len_non_mod]
-    test_idx_non_mod = idx_non_mod[train_len_non_mod:]
+    train_frac          = int((l_mod+l_non_mod) * train_split_proportion)
+    non_mod_frac        = int(train_frac * non_mod_proportion)
     
-    train_idx_mod = idx_mod[:train_len_mod]
-    test_idx_mod = idx_mod[train_len_mod:]
+    idx_non_mod         = list(range(l_non_mod))
+    idx_non_mod         = deterministic_shuffle(idx_non_mod, seed)
+    idx_mod             = list(range(l_mod))
+    idx_mod             = deterministic_shuffle(idx_mod, seed)
+    
+    train_data_non_mod  = idx_non_mod[:non_mod_frac]
+    test_data_non_mod   = idx_non_mod[non_mod_frac:]
 
-    train_dataset = [non_mod_dataset[i] for i in train_idx_non_mod] + [mod_dataset[i] for i in train_idx_mod]
-    test_dataset = [non_mod_dataset[i] for i in test_idx_non_mod] + [mod_dataset[i] for i in test_idx_mod]
+    train_data_mod      = idx_mod[:(train_frac - non_mod_frac)]
+    test_data_mod       = idx_mod[(train_frac - non_mod_frac):]
+    
+    train_data  = [non_mod_dataset[i] for i in train_data_non_mod] + [mod_dataset[i] for i in train_data_mod]
+    test_data   = [non_mod_dataset[i] for i in test_data_non_mod] + [mod_dataset[i] for i in test_data_mod]
 
-    return train_dataset, test_dataset
+    return deterministic_shuffle(train_data, seed), deterministic_shuffle(test_data, seed)
 
-#create function which tells me more about how train- and testset are split
+#create function which tells me more about how data where modulo and not is needed 
 def num_modolo(dataset, prime):
     l = len(dataset)
-    non_modolo = sum([0 if sum(data[0]) > prime-1 else 1 for data in dataset])/l  
-    print(non_modolo)
-    return non_modolo 
+    non_modulo = sum([0 if sum(data[0]) > prime-1 else 1 for data in dataset])/l  
+    print("Modolo function:", non_modulo)
+    return non_modulo 
 
 params = ExperimentParams()
 torch.manual_seed(params.random_seed)
 
-non_mod_dataset, mod_dataset = make_dataset(params.p)
-train_data, test_data = train_test_split(dataset, params.train_frac, params.mod_frac, params.random_seed)
+list_non_mod_frac = [0.5, 0.525, 0.55, 0.575, 0.6]
+df_dic = {}
+for non_mod_frac in list_non_mod_frac:
+    non_mod_dataset, mod_dataset = make_dataset(params.p)
+    #print("NonMod", len(non_mod_dataset), "Mod", len(mod_dataset))
+    print("Train_frac:", params.train_frac, "Mod_frac", params.non_mod_frac)
+    train_data, test_data = train_test_split(non_mod_dataset, mod_dataset, params.train_frac, non_mod_frac, params.random_seed)
+    num_modolo(train_data, params.p)
+    print("Train_data:", len(train_data), "Test_data:", len(test_data))
 
-non_modulo_acc = num_modolo(train_data, params.p)
-all_checkpointed_models, df = train(train_dataset= train_data, test_dataset = test_data, params = params)
-
-plt.plot(df["val_acc"], label = "test")
-plt.plot(df["train_acc"], label = "train")
-plt.legend()
+    all_checkpointed_models, df = train(train_dataset= train_data, test_dataset = test_data, params = params)
+    df_dic[f"Split_{non_mod_frac}"] = df
+    
+for key in df_dic:
+    plt.plot(df_dic[key]["val_acc"], label = f"Val_acc {key}")
+    plt.plot(df_dic[key]["train_acc"], label = f"Train_acc {key}")
+    plt.legend()
 plt.ylabel("Correct answer %")
 plt.xlabel("Checkpoint")
 plt.title(f"Train & test correct answer % for modular addition with p = {params.p}")
 plt.show()
 
-plt.plot(df["val_loss"], label = "test")
-plt.plot(df["train_loss"], label = "train")
-plt.legend()
+for key in df_dic:
+    plt.plot(df_dic[key]["val_loss"], label = f"Val_loss {key}")
+#    plt.plot(df_dic[key]["train_loss"], label = f"Train_loss {key}")
+    plt.legend()
 plt.ylabel("Loss")
 plt.xlabel("Checkpoint")
 plt.title(f"Train & test loss for modular addition with p = {params.p}")
 plt.show()
 
+exit()
 def estimate_llc_given_model(model: torch.nn.Module, loader: torch.utils.data.DataLoader, evaluate: typing.Callable, epsilon: float, beta: float, sampling_method: Type[torch.optim.Optimizer] = SGLD, localization: float = 5, num_chains: int = 2, num_draws: int = 500, num_burnin_steps: int = 0, num_steps_bw_draws: int = 1, device: torch.device = DEVICE, online: bool = True, verbose: bool = False,):
     sweep_stats = estimate_learning_coeff_with_summary(model, loader = loader, evaluate = evaluate, sampling_method = sampling_method, optimizer_kwargs = dict(lr = epsilon, localization=localization, nbeta = beta), num_chains = num_chains, num_draws = num_draws, num_burnin_steps = num_burnin_steps, num_steps_bw_draws = num_steps_bw_draws, device = device, online = online, verbose = verbose,)
     sweep_stats["llc/trace"] = np.array(sweep_stats["llc/trace"])
