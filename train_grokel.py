@@ -2,12 +2,17 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+import os
+import sys
+import pandas as pd 
+import matplotlib.pyplot as plt
 
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 class MLP(nn.Module):
     def __init__(self, params):
+        super(MLP, self).__init__()
         self.embedding  = nn.Embedding(params.p, params.embed_dim)
         self.linear1r   = nn.Linear(params.embed_dim, params.hidden_size, bias = True)
         self.linear1l   = nn.Linear(params.embed_dim, params.hidden_size, bias = True)
@@ -18,12 +23,13 @@ class MLP(nn.Module):
     def forward(self, x):
         x1  = self.embedding(x[..., 0])
         x2  = self.embedding(x[..., 1])
+        x0  = [x1, x2]
         x1  = self.linear1l(x1)
         x2  = self.linear1r(x2)
         x   = x1 + x2
         x = self.act(x)
         x = self.linear2(x)
-        return x
+        return x0, x
 
 def test(model, dataset, device):
     n_correct   = 0
@@ -33,7 +39,7 @@ def test(model, dataset, device):
     with torch.no_grad():
         for x, y in dataset:
             x, y    = x.to(device), y.to(device)
-            out     = model(x)
+            _, out     = model(x)
             loss    = loss_fn(out, y)
             total_loss += loss.item()
             pred    = torch.argmax(out)
@@ -62,7 +68,9 @@ def train(train_dataset, test_dataset, params, verbose = True):
         X, Y    = batch
         X, Y    = X.to(params.device), Y.to(params.device)
         optimizer.zero_grad()
-        out     = model(x)
+        _, out     = model(X)
+        print(out[0, :])
+        exit()
         loss    = loss_fn(out, Y)
         loss.backward()
         optimizer.step()
@@ -71,12 +79,12 @@ def train(train_dataset, test_dataset, params, verbose = True):
             #To implement: save models in the dic
             all_models += [deepcopy(model)]
 
-        if (i + 1) % print_every = 0:
+        if (i + 1) % print_every == 0:
             val_acc, val_loss       = test(model, test_dataset, params.device)
             train_acc, train_loss   = test(model, train_dataset, params.device)
             loss_data.append({"batch": i+1, "train_loss": train_loss, "train_acc": train_acc, "val_loss": val_loss, "val_acc": val_acc,})
             if verbose:
-                pbar.set_postfix({{"train_loss": f"{train_loss:.4f}", "train_acc": f"{train_acc:.4f}", "val_loss": f"{val_loss:.4f}", "val_acc": f"{val_acc:.4f}",})
+                pbar.set_postfix({"train_loss": f"{train_loss:.4f}", "train_acc": f"{train_acc:.4f}", "val_loss": f"{val_loss:.4f}", "val_acc": f"{val_acc:.4f}",})
                 pbar.update(print_every)
 
     if verbose:
@@ -89,4 +97,68 @@ def train(train_dataset, test_dataset, params, verbose = True):
         print(f"Final Val Acc: {val_acc:.4f} | Final Val Loss: {val_loss:.4f}")
     return all_models, df
 
+class ExperimentParams:
+    n_batches: int = 50000
+    n_save_model_checkpoints: int = 0
+    print_times: int = 200
+    lr: float = 0.005
+    batch_size: int = 128
+    hidden_size: int = 48
+    embed_dim: int = 12
+    device: str = DEVICE
+    weight_decay: float = 0.0002   
+    random_seed: int = 0 
+
+    def __init__(self, p):
+        self.p = p
+
+def GradientSymmetry(model, batch):
+    embed, Y = model(batch) 
+    model.zero_grad()
     
+    return 
+
+curr_dic = os.path.join(os.getcwd(), "Datasets")
+files = [f for f in os.listdir(curr_dic) if os.path.isfile(os.path.join(curr_dic, f))]
+
+train_files = []
+test_files  =  []
+for file in files:
+    if file[:4] == "Test":
+        test_files.append(file)
+    else:
+        train_files.append(file)
+
+def get_seed(sub):
+    return sub[-4]
+
+train_files.sort(key = get_seed)
+test_files.sort(key = get_seed)
+print(train_files)
+print(test_files)
+
+p = int(sys.argv[1])
+params = ExperimentParams(p)
+torch.manual_seed(params.random_seed)
+print(params.p)
+
+df_dic = {}
+seeds = [9]
+for seed_num in seeds: 
+    for i in range(6):
+        train_data  = torch.load(f"{curr_dic}/{train_files[seed_num]}", weights_only = True)
+        test_data   = torch.load(f"{curr_dic}/{test_files[seed_num]}", weights_only = True)
+        all_checkpointed_models, df = train(train_dataset = train_data, test_dataset = test_data, params = params)
+        df_dic[f"Seed:{seed_num}_{i}"] = df
+        
+fig, (ax1, ax2) = plt.subplots(2, sharex = True)
+fig.suptitle("Top Training, bottom Test")
+for key in df_dic:
+    ax1.plot(df_dic[key]["val_acc"], label = f"Val_acc {key}")
+#    ax1.plot(df_dic[key]["train_acc"], label = f"Train_acc {key}")
+    ax1.legend()
+    ax2.plot(df_dic[key]["val_loss"], label = f"Val_loss {key}")
+    ax2.legend()
+plt.ylabel("Correct answer %")
+plt.xlabel("Checkpoint")
+plt.show()

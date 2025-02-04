@@ -66,7 +66,11 @@ m_data, nm_data = make_dataset(p)
 train_dataset, test_dataset = train_test_split(m_data, nm_data, train_split_proportion, nm_proportion, seed)
 
 current_folder = os.getcwd()
+#tps = is how train and test data is split; nmp is the proportion of modulo and non-modulo data in train set
 if not os.path.exists(f"{current_folder}/Datasets/Train_p_{p}_tps_{train_split_proportion}_nmp_{nm_proportion}_seed_{seed}.pt"):
     torch.save(train_dataset, f"{current_folder}/Datasets/Train_p_{p}_tps_{train_split_proportion}_nmp_{nm_proportion}_seed_{seed}.pt")
-test = torch.load(f"{current_folder}/Datasets/Train_p_{p}_tps_{train_split_proportion}_nmp_{nm_proportion}_seed_{seed}.pt")
-print(test)
+if not os.path.exists(f"{current_folder}/Datasets/Test_p_{p}_tps_{train_split_proportion}_nmp_{nm_proportion}_seed_{seed}.pt"):
+    torch.save(test_dataset, f"{current_folder}/Datasets/Test_p_{p}_tps_{train_split_proportion}_nmp_{nm_proportion}_seed_{seed}.pt")
+test = torch.load(f"{current_folder}/Datasets/Train_p_{p}_tps_{train_split_proportion}_nmp_{nm_proportion}_seed_{seed}.pt", weights_only = True)
+if test != None:
+    print("Sucessfull")
