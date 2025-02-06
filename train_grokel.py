@@ -1,5 +1,7 @@
 import torch
 import torch.nn as nn
+import numpy as np
+import random
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 import os
@@ -69,12 +71,10 @@ def train(train_dataset, test_dataset, params, verbose = True):
         X, Y    = X.to(params.device), Y.to(params.device)
         optimizer.zero_grad()
         _, out     = model(X)
-        print(out[0, :])
-        exit()
         loss    = loss_fn(out, Y)
         loss.backward()
         optimizer.step()
-        
+                
         if checkpoint_every and (i + 1) % checkpoint_every == 0:
             #To implement: save models in the dic
             all_models += [deepcopy(model)]
@@ -82,7 +82,8 @@ def train(train_dataset, test_dataset, params, verbose = True):
         if (i + 1) % print_every == 0:
             val_acc, val_loss       = test(model, test_dataset, params.device)
             train_acc, train_loss   = test(model, train_dataset, params.device)
-            loss_data.append({"batch": i+1, "train_loss": train_loss, "train_acc": train_acc, "val_loss": val_loss, "val_acc": val_acc,})
+            gs = GradientSymmetry(model, p)
+            loss_data.append({"batch": i+1, "train_loss": train_loss, "train_acc": train_acc, "val_loss": val_loss, "val_acc": val_acc, "grad_symm": gs, })
             if verbose:
                 pbar.set_postfix({"train_loss": f"{train_loss:.4f}", "train_acc": f"{train_acc:.4f}", "val_loss": f"{val_loss:.4f}", "val_acc": f"{val_acc:.4f}",})
                 pbar.update(print_every)
@@ -112,13 +113,29 @@ class ExperimentParams:
     def __init__(self, p):
         self.p = p
 
-def GradientSymmetry(model, batch):
-    embed, Y = model(batch) 
-    model.zero_grad()
-    
-    return 
+def GradientSymmetry(model, p):
+    data = [(a, b, c) for a in range(p) for b in range(p) for c in range(p)]
+    random.Random(42).shuffle(data)
+    data = data[:100]
+    gs = 0
+    for abc in data:
+        a, b, c = abc
+        x = torch.tensor([a, b], device = "cuda")
+        embed, out = model(x) 
+        embed[0].retain_grad()
+        embed[1].retain_grad()
+        out[c].backward(retain_graph = True)
+        embed_gl = embed[0].grad[0].detach().cpu().numpy()
+        embed_gr = embed[1].grad[0].detach().cpu().numpy()
+        cos_sim = np.sum(embed_gl * embed_gr) / np.sqrt(np.sum(embed_gl**2)) / np.sqrt(np.sum(embed_gr**2))
+        gs += cos_sim
+
+    return gs/len(data)
 
 curr_dic = os.path.join(os.getcwd(), "Datasets")
+###
+### Still need to implement that it reads from files the p value
+###
 files = [f for f in os.listdir(curr_dic) if os.path.isfile(os.path.join(curr_dic, f))]
 
 train_files = []
@@ -134,18 +151,15 @@ def get_seed(sub):
 
 train_files.sort(key = get_seed)
 test_files.sort(key = get_seed)
-print(train_files)
-print(test_files)
 
 p = int(sys.argv[1])
 params = ExperimentParams(p)
 torch.manual_seed(params.random_seed)
-print(params.p)
 
 df_dic = {}
 seeds = [9]
 for seed_num in seeds: 
-    for i in range(6):
+    for i in range(5):
         train_data  = torch.load(f"{curr_dic}/{train_files[seed_num]}", weights_only = True)
         test_data   = torch.load(f"{curr_dic}/{test_files[seed_num]}", weights_only = True)
         all_checkpointed_models, df = train(train_dataset = train_data, test_dataset = test_data, params = params)
@@ -155,6 +169,7 @@ fig, (ax1, ax2) = plt.subplots(2, sharex = True)
 fig.suptitle("Top Training, bottom Test")
 for key in df_dic:
     ax1.plot(df_dic[key]["val_acc"], label = f"Val_acc {key}")
+    ax1.plot(df_dic[key]["grad_symm"], label = f"GradSymm {key}")
 #    ax1.plot(df_dic[key]["train_acc"], label = f"Train_acc {key}")
     ax1.legend()
     ax2.plot(df_dic[key]["val_loss"], label = f"Val_loss {key}")

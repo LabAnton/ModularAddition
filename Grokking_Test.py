@@ -215,7 +215,7 @@ for key in df_dic:
 #    plt.plot(df_dic[key]["train_loss"], label = f"Train_loss {key}")
     plt.legend()
 plt.ylabel("Loss")
-plt.xlabel("Checkpoint")
+plt.xlabel("Ch  eckpoint")
 plt.title(f"Train & test loss for modular addition with p = {params.p}")
 plt.show()
 
