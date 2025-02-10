@@ -103,13 +103,13 @@ def train(train_dataset, test_dataset, params, verbose = True):
     return all_models, df
 
 class ExperimentParams:
-    n_batches: int = 20000 
+    n_batches: int = 50000 
     n_save_model_checkpoints: int = 0
     print_times: int = 50
     lr: float = 0.005
     batch_size: int = 128
-    hidden_size: int = 256 
-    embed_dim: int = 256 
+    hidden_size: int = 48 
+    embed_dim: int = 24 
     device: str = DEVICE
     weight_decay: float = 0.0002   
     random_seed: int = 0 
@@ -141,16 +141,28 @@ def pca(model, p):
 
     pca = PCA(n_components = 12)
     pca_we = pca.fit_transform(we.detach().cpu().numpy())
+    print(pca_we.shape)
     plt.figure(figsize = (30, 6))
     pi = math.pi
 
     for idx in range(12):
         comp = pca_we[:, idx]
+        tt = []
         for num in range(1, p):
             vv = [comp[num * t % p] for t in range(p)] 
-            print(vv)
-
-            return 
+            sa = sum(vv[t] * (math.cos(2 * pi * t / p )+ math.sin(2*pi*t/p)) for t in range(p))
+            sa =- abs(sa)
+            tt.append((sa, num))
+        tt.sort()
+        plt.subplot(1, 12, idx+1)
+        i = tt[0][1]
+        i = min(i, p-i)
+        v = [comp[t*i%p] for t in range(p)]
+        plt.title(f'PCA#{idx+1} X:0, {i}, {2*i%p}..')
+        plt.plot(v)
+    
+    return
+            
 
 curr_dic = os.path.join(os.getcwd(), "Datasets")
 ###
