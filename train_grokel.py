@@ -1,3 +1,4 @@
+import math
 import torch
 import torch.nn as nn
 import numpy as np
@@ -32,6 +33,7 @@ class MLP(nn.Module):
         x   = x1 + x2
         x   = self.act(x)
         x   = self.linear2(x)
+
         return x0, x
 
 def test(model, dataset, device):
@@ -92,6 +94,7 @@ def train(train_dataset, test_dataset, params, verbose = True):
     if verbose:
         pbar.close()
     df = pd.DataFrame(loss_data)
+    pca(model, p)
     train_acc, train_loss   = test(model, train_dataset, params.device)
     val_acc, val_loss       = test(model, test_dataset, params.device)
     if verbose:
@@ -102,11 +105,11 @@ def train(train_dataset, test_dataset, params, verbose = True):
 class ExperimentParams:
     n_batches: int = 20000 
     n_save_model_checkpoints: int = 0
-    print_times: int = 200
+    print_times: int = 50
     lr: float = 0.005
     batch_size: int = 128
     hidden_size: int = 256 
-    embed_dim: int = 12 
+    embed_dim: int = 256 
     device: str = DEVICE
     weight_decay: float = 0.0002   
     random_seed: int = 0 
@@ -128,14 +131,26 @@ def GradientSymmetry(model, p, boo):
         out[c].backward(retain_graph = True)
         embed_gl = embed[0].grad.detach().cpu().numpy()
         embed_gr = embed[1].grad.detach().cpu().numpy()
-        if boo == True:
-            print(embed_gl)
-            print(embed_gr)
-            exit()
         cos_sim = np.sum(embed_gl * embed_gr) / (np.sqrt(np.sum(embed_gl**2)) * np.sqrt(np.sum(embed_gr**2)))
         gs += cos_sim
 
     return gs/len(data)
+
+def pca(model, p):
+    we = model.embedding.weight
+
+    pca = PCA(n_components = 12)
+    pca_we = pca.fit_transform(we.detach().cpu().numpy())
+    plt.figure(figsize = (30, 6))
+    pi = math.pi
+
+    for idx in range(12):
+        comp = pca_we[:, idx]
+        for num in range(1, p):
+            vv = [comp[num * t % p] for t in range(p)] 
+            print(vv)
+
+            return 
 
 curr_dic = os.path.join(os.getcwd(), "Datasets")
 ###
@@ -182,3 +197,4 @@ for key in df_dic:
 plt.ylabel("Correct answer %")
 plt.xlabel("Checkpoint")
 plt.show()
+
